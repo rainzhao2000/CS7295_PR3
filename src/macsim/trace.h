@@ -443,7 +443,6 @@ inline bool is_using_shared_memory(uint8_t opcode){
 
 // TODO: Task 1 : check if the opcode belongs to compute list
 inline bool is_compute(uint8_t opcode){
-  // Logic: Return true if opcode is NOT a load (is_ld) and NOT a store (is_st)
   return false;
 }
 
