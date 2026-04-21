@@ -14,7 +14,7 @@ struct RAM_request
     int access_sz;
     sim_time_type req_time;
     int core_id;
-    int warp_id;
+    uint64_t warp_id;
     uint64_t request_id;
 };
 
@@ -22,7 +22,7 @@ struct RAM_response
 {
     uint64_t request_id;
     int core_id;
-    int warp_id;
+    uint64_t warp_id;
 };
 
 class RAM {

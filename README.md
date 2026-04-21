@@ -17,6 +17,7 @@ It plays a crucial role in simulating the overall performance of GPU programs by
 NVIDIA Tensor Cores serve as dedicated accelerators for matrix multiplication operations, particularly in artificial intelligence computations. 
 They offer significantly higher throughput compared to CUDA Cores, making them essential for accelerating AI applications. 
 Tensor Cores excel in performing matrix multiplications efficiently, contributing to improved performance in tasks dominated by GEMM operations.
+Tensor cores are expensive, so modern GPUs adopt a subcore concept: one SM contains 4 subcores, each responsible for one warp and equipped with one tensor core, for a total of 4 tensor cores per SM.
 
 ### Differences
 While the compute core handles one-dimensional point-by-point calculations, the tensor core is optimized for two-dimensional tile-by-tile calculations. 
@@ -44,18 +45,20 @@ called each cycle, will now handle compute instructions instead of disregarding 
 > Hint: Look for "// TODO: Task 1" comments!
 
 ### Task-2: Extend to Tensor Core
-In this task, we aim to extend our code to simulate a tensor core-like behavior.
-This involves increasing the execution width, allowing for parallel execution of multiple compute instructions per core.
-Additionally, we'll adjust the latencies for tensor instructions to reflect their characteristics.
+In this task, we extend the compute core to simulate tensor-core-like behavior.
+Tensor operations (opcodes starting with `H`, e.g., `HMMA`) and non-tensor ALU operations should be treated **differently** when they enter the execution buffer:
 
-Below is the configurations to be simulated:
+- **Tensor instructions** go through a *width-limited* execution buffer that models the small number of dedicated tensor units per sub-core. When the buffer is full, the issuing warp must stall.
+- **Non-tensor compute instructions** (basic ALU ops) are *always* added to the buffer for register-dependency tracking only. Real GPUs have abundant INT32/FP32 ALU lanes, so they are not capacity-bound at this granularity.
 
-| Latency (cycles) | Execution Width |
-|------------------|---------------------|
-| 64               | 8                   |
+Below is the tensor configuration to be simulated:
 
-The latency above is for tensor instructions only, other compute instructions continue to the take the default value of 1.
-For report purposes, you can explore varying the tensor operator's latency (32-128) and execution bandwidth (2-16).
+| Latency (cycles) | Execution Width (tensor) |
+|------------------|--------------------------|
+| 64               | 1                        |
+
+The latency above applies only to tensor instructions; other compute instructions use the default latency of 1.
+For report purposes, you can explore varying the tensor operator's latency (32-128) and execution width (2-16).
 The reduced number of instructions in tensor operations allows for adjustments in latency or limits on the number of operations. Analyzing these trade-offs will provide valuable insights.
 
 It's worth noting that the trace generation has already accounted for tensor operations, resulting in fewer instructions (observe the `NUM_INSTRS_RETIRED` statistic for both traces).
@@ -181,7 +184,7 @@ We suggest that you prepare a short report for yourself using the outline below.
 For Task-1 and Task-2:
 - A short explanation of your implementation.
 - A comparison of Task-1 (gemm_float) and Task-2 (gemm_half) performance.
-- Plots exploring how performance changes as you vary tensor latency and execution width for Task-4.
+- Plots exploring how performance changes as you vary tensor latency and execution width for Task-2.
 
 For Task-3:
 - A short explanation of your implementation.

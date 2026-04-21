@@ -5,6 +5,7 @@
 		 <Max_Block_Per_Core>4</Max_Block_Per_Core>
 		 <Block_Scheduling_Policy>ROUND_ROBIN</Block_Scheduling_Policy>
 		 <Warp_Scheduling_Policy>CCWS</Warp_Scheduling_Policy>
+		 <Tensor_Latency>64</Tensor_Latency>
 		 <Execution_Width>1</Execution_Width>
 		 <GPU_Trace_Path>macsim_traces/lavaMD/5/kernel_config.txt</GPU_Trace_Path>
 		 <N_Repeat>1</N_Repeat>

@@ -8,5 +8,5 @@
 macsim_traces/
 build/
 log/
-macsim
+/macsim
 __pycache__/

@@ -117,7 +117,7 @@ void core_c::run_a_cycle(){
       // clear memory response from memory response queue
       c_memory_responses.pop();
 
-      WSLOG(printf("Warp ready: %x\n", ready_warp->warp_id);)
+      WSLOG(printf("Warp ready: %lx\n", ready_warp->warp_id);)
     } else {
       // memory response doesn't belong to any warp in dispatch queue: discard it
       c_memory_responses.pop();
@@ -148,11 +148,11 @@ void core_c::run_a_cycle(){
   printf("[%ld,%d]: DQ[", c_cycle, core_id);
   unsigned _indx=0;
   for (auto x: c_dispatched_warps){
-    printf("%x:%d%s", x->warp_id, x->ccws_lls_score, (_indx++ != c_dispatched_warps.size()-1?", ":""));
+    printf("%lx:%d%s", x->warp_id, x->ccws_lls_score, (_indx++ != c_dispatched_warps.size()-1?", ":""));
   }
   printf("] SQ["); _indx=0;
   for (auto x: c_suspended_warps){
-    printf("%x:%d%s", x.first, x.second->ccws_lls_score, (_indx++ != c_suspended_warps.size()-1?", ":""));
+    printf("%lx:%d%s", x.first, x.second->ccws_lls_score, (_indx++ != c_suspended_warps.size()-1?", ":""));
   }
   printf("]\n");
   )
@@ -160,12 +160,12 @@ void core_c::run_a_cycle(){
   CCWSLOG(
   // Print VTAs
   for(auto W: c_dispatched_warps){
-    printf("dVTA warp:%x: [", W->warp_id);
+    printf("dVTA warp:%lx: [", W->warp_id);
     W->ccws_vta_entry->print();
     printf("]\n");
   }
   for(auto W: c_suspended_warps){
-    printf("sVTA warp:%x: [", W.first);
+    printf("sVTA warp:%lx: [", W.first);
     W.second->ccws_vta_entry->print();
     printf("]\n");
   }
@@ -178,7 +178,7 @@ void core_c::run_a_cycle(){
     return;
   }
 
-  WSLOG(printf("Warp scheduled: %x\n", c_running_warp->warp_id);)
+  WSLOG(printf("Warp scheduled: %lx\n", c_running_warp->warp_id);)
 
   if (!c_running_warp->m_file_opened)
     ASSERTM(0, "error opening trace file");
@@ -198,7 +198,7 @@ void core_c::run_a_cycle(){
         reached_eof = true;
 
       for(unsigned i=0; i<num_of_insts_read; i++) {
-        trace_info_nvbit_small_s * trace_info = new trace_info_nvbit_small_s;
+        trace_info_nvbit_small_s * trace_info = gpusim->trace_info_pool->acquire_entry();
         memcpy(trace_info, &tmp_buf[i*TRACE_SIZE], TRACE_SIZE);
         c_running_warp->trace_buffer.push(trace_info);
       }
@@ -206,10 +206,12 @@ void core_c::run_a_cycle(){
 
   if(reached_eof) {
       // No instructions to execute in buffer and we reached end of trace file: close file
+      int finished_block_id = c_running_warp->block_id;
       gzclose(c_running_warp->m_trace_file);
-      WSLOG(printf("Warp finished: %x\n", c_running_warp->warp_id);)
+      WSLOG(printf("Warp finished: %lx\n", c_running_warp->warp_id);)
       delete c_running_warp;
       c_running_warp = NULL;
+      gpusim->on_warp_finished(core_id, finished_block_id);
       return;
     }
   }
@@ -221,11 +223,11 @@ void core_c::run_a_cycle(){
   if((is_ld(trace_info->m_opcode) || is_st(trace_info->m_opcode)) && !is_using_shared_memory(trace_info->m_opcode)) {
     // Load/Store Op: Send request to memory hierarchy
     CACHELOG(printf("==[Cycle: %ld]============================================\n", c_cycle);)
-    CACHELOG(printf("Cache Access: Wid: %x, Addr: 0x%016lx, Wr: %d\n", c_running_warp->warp_id, trace_info->m_mem_addr, is_st(trace_info->m_opcode));)
+    CACHELOG(printf("Cache Access: Wid: %lx, Addr: 0x%016lx, Wr: %d\n", c_running_warp->warp_id, trace_info->m_mem_addr, is_st(trace_info->m_opcode));)
     bool suspend_warp = send_mem_req(c_running_warp->warp_id, trace_info, ENABLE_CACHE);
     if(suspend_warp) {
       // Memory request initiated, need to suspend without committing
-      WSLOG(printf("Warp suspended: %x\n", c_running_warp->warp_id);)
+      WSLOG(printf("Warp suspended: %lx\n", c_running_warp->warp_id);)
       c_suspended_warps[c_running_warp->warp_id] = c_running_warp;
       c_running_warp = NULL;
       return;
@@ -236,23 +238,31 @@ void core_c::run_a_cycle(){
   // Task 1: Compute Core Logic
   // ---------------------------------------------------------------------------
   // TODO: Task 1: Check if the instruction is a compute instruction (use trace.h helpers).
-  // If so, calculate latency and then add it to the exec_buffer.
-  // If the buffer is full, stall the current running warp (return without popping).
-  
-  if(/*compute ?*/) {
-    
-    if(/*buffer full ?*/) {
-      stall_cycles++;
-      return;
-    }
+  // If so, calculate latency and then track it in exec_buffer.
+  //   - Tensor instructions (opcodes starting with 'H'): width-limited by exec_buffer
+  //     capacity (models limited tensor units per sub-core). If buffer full, stall.
+  //   - Non-tensor compute (ALU): always added to exec_buffer for dependency tracking
+  //     only (ALU units are abundant on real GPUs, not capacity-bound).
 
-      // Count tensor instructions (opcodes starting with 'H') - only after successful buffer insertion
-      std::string opcode_str = GPU_NVBIT_OPCODE[trace_info->m_opcode];
-      if (opcode_str.length() > 0 && opcode_str[0] == 'H') {
-          tensor_instr_cnt++;
+  if(/*compute ?*/) {
+
+    // Check whether this is a tensor op (opcodes starting with 'H', e.g., HMMA)
+    std::string opcode_str = GPU_NVBIT_OPCODE[trace_info->m_opcode];
+    bool is_tensor_op = (opcode_str.length() > 0 && opcode_str[0] == 'H');
+
+    if (is_tensor_op) {
+      // TODO: add to exec_buffer with width-limit check
+      if(/*buffer full ?*/) {
+        stall_cycles++;
+        return;
       }
+      tensor_instr_cnt++;
+    } else {
+      // TODO: unconditionally add to exec_buffer for dependency tracking
+    }
   }
 
+  gpusim->trace_info_pool->release_entry(trace_info);
   c_running_warp->trace_buffer.pop();
   inst_count_total++;
 }
@@ -266,7 +276,7 @@ void core_c::run_a_cycle(){
 // TODO: Task 1: Add instructions to the execution buffer (c_exec_buffer).
 // If the execution buffer is full, return true.
 
-bool core_c::add_insts_to_exec_buffer(int completion_cycle, int warp_id, int dest_reg) {
+bool core_c::add_insts_to_exec_buffer(int completion_cycle, uint64_t warp_id, int dest_reg) {
   // Implement logic
   return false;
 }
@@ -374,7 +384,7 @@ bool core_c::schedule_warps_ccws() {
 // Memory & Cache Feedback (Task 4 Support)
 // ---------------------------------------------------------------------------------------------------------------------
 
-bool core_c::send_mem_req(int wid, trace_info_nvbit_small_s* trace_info, bool enable_cache){
+bool core_c::send_mem_req(uint64_t wid, trace_info_nvbit_small_s* trace_info, bool enable_cache){
   gpusim->inc_n_cache_req();
 
   if(!enable_cache) {
@@ -418,7 +428,7 @@ bool core_c::send_mem_req(int wid, trace_info_nvbit_small_s* trace_info, bool en
 
         // Update the VTA Score to LLDS
         int llds = 0;
-        CCWSLOG(printf("VTA hit! (core:%d, warp: 0x%x, score:%d -> %d)\n", core_id, c_running_warp->warp_id, c_running_warp->ccws_lls_score, llds);)
+        CCWSLOG(printf("VTA hit! (core:%d, warp: 0x%lx, score:%d -> %d)\n", core_id, c_running_warp->warp_id, c_running_warp->ccws_lls_score, llds);)
         c_running_warp->ccws_lls_score = llds;
       }
       //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -484,7 +494,7 @@ bool core_c::send_mem_req(int wid, trace_info_nvbit_small_s* trace_info, bool en
 
         // Update the VTA Score to LLDS
         int llds = 0;
-        CCWSLOG(printf("VTA hit! (core:%d, warp: 0x%x, score:%d -> %d)\n", core_id, c_running_warp->warp_id, c_running_warp->ccws_lls_score, llds);)
+        CCWSLOG(printf("VTA hit! (core:%d, warp: 0x%lx, score:%d -> %d)\n", core_id, c_running_warp->warp_id, c_running_warp->ccws_lls_score, llds);)
         c_running_warp->ccws_lls_score = llds;
       }
       //////////////////////////////////////////////////////////////////////////////////////////////////////////////////

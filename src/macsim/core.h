@@ -12,7 +12,7 @@ class macsim;
 class cache_c;
 
 struct ExecutionData {
-    int warp_id;
+    uint64_t warp_id;
     int dest_reg;
     int timestamp;
 };
@@ -26,13 +26,13 @@ public:
   int c_fetching_block_id = -1;
 
   // Memory responses recieved
-  std::queue<int> c_memory_responses;
+  std::queue<uint64_t> c_memory_responses;
 
   // Active warp pool
   std::vector<warp_s*> c_dispatched_warps;
 
   // Suspended warps pool: warps waiting for response from memory
-  std::unordered_map<int, warp_s*> c_suspended_warps;
+  std::unordered_map<uint64_t, warp_s*> c_suspended_warps;
 
   // Structure holding the current executing instructions
   std::vector<ExecutionData> c_exec_buffer;
@@ -109,10 +109,10 @@ private:
   bool schedule_warps_ccws();
 
   // Send a memory request
-  bool send_mem_req(int wid, trace_info_nvbit_small_s* trace_info, bool enable_cache);
+  bool send_mem_req(uint64_t wid, trace_info_nvbit_small_s* trace_info, bool enable_cache);
 
   // add the completion cycle timestamp of compute instructions to the execution buffer
-  bool add_insts_to_exec_buffer(int completion_cycle, int warp_id, int dest_reg);
+  bool add_insts_to_exec_buffer(int completion_cycle, uint64_t warp_id, int dest_reg);
 
   // remove an entry if its completion timestamp is less than or equal to current cycle
   void remove_insts_in_exec_buffer(int current_cycle);

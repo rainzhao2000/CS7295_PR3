@@ -2,10 +2,10 @@ Reading GPU Configurations...
 Block Scheduling Policy: ROUND_ROBIN
 Warp Scheduling Policy: ROUND_ROBIN
 trace type : nvbit
-> trace_path: macsim_traces/lavaMD/5/Kernel0/trace.txt truncate_size: 0
+> trace_path: /storage/ice-shared/cs8803o21/macsim_traces/lavaMD/5/Kernel0/trace.txt truncate_size: 0
  trace type : nvbit
 # of blocks: 125, # of warps: 500, # of Instrs: 43276498
-Macsim started @ Wed Feb 18 20:56:50 2026
+Macsim started @ Tue Apr 21 17:52:55 2026
 
 **************************************************
 ========== starting kernel 0 ==========
@@ -137,9 +137,9 @@ Core: 7
 	CORE7_TOT_INSTR    : 5442490
 GPU Retired.
 **************************************************
-Simulation finished @ Wed Feb 18 20:56:59 2026
+Simulation finished @ Tue Apr 21 17:53:05 2026
 
-Total simulation time: 0:0:9
+Total simulation time: 0:0:10
 
 ============= MacSim Stats =============
 Macsim:

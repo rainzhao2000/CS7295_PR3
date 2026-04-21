@@ -5,7 +5,7 @@ trace type : nvbit
 > trace_path: micro_traces/trace2/trace.txt truncate_size: 0
  trace type : nvbit
 # of blocks: 1, # of warps: 2, # of Instrs: 41
-Macsim started @ Thu Feb 19 13:25:26 2026
+Macsim started @ Tue Apr 21 18:07:25 2026
 
 **************************************************
 ========== starting kernel 0 ==========
@@ -17,10 +17,11 @@ Core: 0
 	CORE0_STALL_CYCLES : 202
 	CORE0_LD_INSTR     : 1
 	CORE0_ST_INSTR     : 0
+	CORE0_TENSOR_INSTR : 0
 	CORE0_TOT_INSTR    : 248
 GPU Retired.
 **************************************************
-Simulation finished @ Thu Feb 19 13:25:26 2026
+Simulation finished @ Tue Apr 21 18:07:25 2026
 
 Total simulation time: 0:0:0
 

@@ -269,7 +269,7 @@ void macsim::trace_reader_setup()
 }
 
 void macsim::inst_event(trace_info_nvbit_small_s* trace_info, int core_id,
-                        int block_id, int warp_id, sim_time_type c_cycle, bool on_response_insert_in_l1, bool on_response_mark_dirty) {
+                        int block_id, uint64_t warp_id, sim_time_type c_cycle, bool on_response_insert_in_l1, bool on_response_mark_dirty) {
   // Increment counters in core
   if (is_ld(trace_info->m_opcode))
     core_pointers_v[core_id]->ld_req_cnt++;
@@ -287,7 +287,7 @@ void macsim::inst_event(trace_info_nvbit_small_s* trace_info, int core_id,
   sb_entry.mem_queue_id = n_requests;
   sb_entry.insert_in_l1 = on_response_insert_in_l1;
   sb_entry.mark_dirty = on_response_mark_dirty;
-  GPU_scoreboard.push_back(sb_entry);
+  GPU_scoreboard[sb_entry.mem_queue_id] = sb_entry;
 
   // Generate memory request
   RAM_request ram_req = {
@@ -317,9 +317,11 @@ void macsim::get_mem_response() {
     uint64_t mem_response_id = response.request_id;
     sim_time_type req_time=0, resp_time=0;
 
-    // Find GPU scoreboard entry corresponding to the response
-    for (auto entry = GPU_scoreboard.begin(); entry != GPU_scoreboard.end(); entry++) {
-      if (entry->mem_queue_id == mem_response_id) {
+    // Find GPU scoreboard entry corresponding to the response (O(1) hash lookup)
+    auto it = GPU_scoreboard.find(mem_response_id);
+    if (it != GPU_scoreboard.end()) {
+      GPU_scoreboard_entry* entry = &it->second;
+      {
         req_time = entry->req_time; //entry.req_time + delay;
         resp_time = m_cycle - req_time;
 
@@ -336,7 +338,7 @@ void macsim::get_mem_response() {
             .access_sz = l2cache_line_size,
             .req_time = m_cycle,
             .core_id = -1,
-            .warp_id = -1,
+            .warp_id = (uint64_t)-1,
             .request_id = n_requests
           };
           n_requests++;
@@ -374,8 +376,7 @@ void macsim::get_mem_response() {
         core_pointers_v[response.core_id]->c_memory_responses.push(response.warp_id);
 
         // erase scoreboard entry
-        GPU_scoreboard.erase(entry);
-        break;
+        GPU_scoreboard.erase(it);
       }
     }
     total_latency+=resp_time; // Log GPU round trip latency
@@ -413,8 +414,9 @@ bool macsim::run_a_cycle(){
   // Timeout resolution: check MEM request queue at interval=t, if outstanding
   // time > 10*average latency, report timeout request (print at end)
   if (m_cycle % 100000 == 0) {
-    auto entry = GPU_scoreboard.begin();
-    while (entry != GPU_scoreboard.end()) {
+    auto it = GPU_scoreboard.begin();
+    while (it != GPU_scoreboard.end()) {
+      GPU_scoreboard_entry* entry = &it->second;
       uint32_t wait_time = m_cycle - entry->req_time;
       if ((n_responses >= 2000) && (wait_time > (get_avg_latency()*1000))) {
         // if timeout entry found, clear the entry
@@ -424,9 +426,9 @@ bool macsim::run_a_cycle(){
 
         // respond to cores
         core_pointers_v[entry->core_id]->c_memory_responses.push(entry->warp_id);
-        GPU_scoreboard.erase(entry);
+        it = GPU_scoreboard.erase(it);
       } else {
-        entry++;
+        ++it;
       }
     }
   }
@@ -462,11 +464,12 @@ void macsim::start_kernel(){
   // Pool and memory allocation
   trace_node_pool = new pool_c<warp_trace_info_node_s>(10, "warp_node_pool");
   warp_pool = new pool_c<warp_s>(10, "warp_pool");
+  trace_info_pool = new pool_c<trace_info_nvbit_small_s>(256, "trace_info_pool");
 
   m_block_queue = new unordered_map<int, list<warp_trace_info_node_s *> *>;
 
   // Setup blocks and threads
-  for (int warp_id = 0; warp_id < kernel_info_v[kernel_id].n_of_warp; warp_id++){
+  for (uint64_t warp_id = 0; warp_id < (uint64_t)kernel_info_v[kernel_id].n_of_warp; warp_id++){
     create_warp_node(kernel_id, get<0>(kernel_info_v[kernel_id].warp_id_v[warp_id]));
   }
   block_scheduling_policy = m_gpu_params->Block_Scheduling_Policy;
@@ -511,6 +514,7 @@ void macsim::end_kernel(){
   // Pool deallocation
   delete trace_node_pool;
   delete warp_pool;
+  delete trace_info_pool;
   delete m_block_queue;
 
   m_kernel_block_start_count += kernel_info_v[kernel_id].n_of_block;
@@ -521,7 +525,7 @@ void macsim::end_kernel(){
   }
 }
 
-void macsim::create_warp_node(int kernel_id, int warp_id){
+void macsim::create_warp_node(int kernel_id, uint64_t warp_id){
   warp_trace_info_node_s *node = trace_node_pool->acquire_entry();
 
   node->trace_info_ptr = NULL; /**< trace information pointer */
@@ -553,8 +557,9 @@ void macsim::insert_block(warp_trace_info_node_s *node){
 
 int macsim::dispatch_warps(int core_id, Block_Scheduling_Policy_Types policy){
   int ndispatched_warps=0;
-  for(int core_id_ = 0; core_id_ < n_of_cores; core_id_++){
-    if (core_id != -1 && core_id_ != core_id) continue;
+  int start = (core_id == -1) ? 0 : core_id;
+  int end   = (core_id == -1) ? n_of_cores : core_id + 1;
+  for(int core_id_ = start; core_id_ < end; core_id_++){
     warp_trace_info_node_s* warp_to_run;
     core_c* core = core_pointers_v[core_id_];
 
@@ -591,7 +596,7 @@ int macsim::dispatch_warps(int core_id, Block_Scheduling_Policy_Types policy){
   return ndispatched_warps;
 }
 
-warp_s* macsim::initialize_warp(int warp_id){
+warp_s* macsim::initialize_warp(uint64_t warp_id){
   warp_s* trace_info = warp_pool->acquire_entry();
 
   string kernel_path = kernels_v[kernel_id];
@@ -626,47 +631,57 @@ int macsim::schedule_blocks_rr(int core_id){
   core_c* core = core_pointers_v[core_id];
   int fetching_block_id = core->c_fetching_block_id;
 
-  // Check whether the current block has more warps to execute
-  if (fetching_block_id != -1){
+  // If current fetching block has warps in queue, keep dispatching from it
+  if (fetching_block_id != -1) {
     list<warp_trace_info_node_s *> *block_list = (*m_block_queue)[fetching_block_id];
-    if (block_list->empty() && !m_block_schedule_info[fetching_block_id]->retired){
-      // check every warp that is suspended. if any of them belong to fetching_block_id, return -1
-      for (const auto& pair: core->c_suspended_warps){
-        if (pair.second->block_id == fetching_block_id) return -1;
-      }
-      m_block_schedule_info[fetching_block_id]->retired = true;
-      core->c_running_block_num--;
-    }
+    if (!block_list->empty()) return fetching_block_id;
+    // Queue empty — all warps dispatched, clear fetching state
+    // (Block retirement happens in on_warp_finished when all warps complete)
+    core->c_fetching_block_id = -1;
   }
 
-  // If the current block that the core is fetching is not retired, return the current block id
-  if ((fetching_block_id != -1) &&
-      m_block_schedule_info.find(fetching_block_id) != m_block_schedule_info.end() &&
-      !(m_block_schedule_info[fetching_block_id]->retired)) {
-    return fetching_block_id;
-  }
-
-  // If there is not enough space in dispatch queue to enqueue all threads of a block, we return -1
+  // Check capacity
   if (core->c_running_block_num >= max_block_per_core) return -1;
-  
-  // Find a new block to schedule
+
+  // Find new unscheduled block (FIFO)
   int new_block_id = -1;
   for (auto I = m_block_list.begin(), E = m_block_list.end(); I != E; ++I) {
     int block_id = (*I).first;
-    // this block was not fetched yet and has traces to schedule
-    if (!(m_block_schedule_info[block_id]->start_to_fetch) &&
+    if (!m_block_schedule_info[block_id]->start_to_fetch &&
         m_block_schedule_info[block_id]->trace_exist) {
       new_block_id = block_id;
       break;
     }
   }
   if (new_block_id == -1) return -1;
-  else {
-    m_block_schedule_info[new_block_id]->start_to_fetch = true;
-    m_block_schedule_info[new_block_id]->dispatched_core_id = core_id;
-    core->c_running_block_num++;
-    core->c_fetching_block_id = new_block_id;
-    return new_block_id;
+
+  m_block_schedule_info[new_block_id]->start_to_fetch = true;
+  m_block_schedule_info[new_block_id]->dispatched_core_id = core_id;
+  core->c_running_block_num++;
+  core->c_fetching_block_id = new_block_id;
+  return new_block_id;
+}
+
+void macsim::on_warp_finished(int core_id, int block_id) {
+  core_c* core = core_pointers_v[core_id];
+
+  // Check if block queue still has undispatched warps
+  list<warp_trace_info_node_s *> *bq = (*m_block_queue)[block_id];
+  if (!bq->empty()) return;
+
+  // Check for warps still alive on this core
+  for (const auto& p : core->c_suspended_warps)
+    if (p.second->block_id == block_id) return;
+  for (const auto& w : core->c_dispatched_warps)
+    if (w && w->block_id == block_id) return;
+  // c_running_warp is NULL here (warp was just deleted)
+
+  // All warps finished — retire block
+  if (!m_block_schedule_info[block_id]->retired) {
+    m_block_schedule_info[block_id]->retired = true;
+    core->c_running_block_num--;
+    if (core->c_fetching_block_id == block_id)
+      core->c_fetching_block_id = -1;
   }
 }
 

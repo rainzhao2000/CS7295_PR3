@@ -5,6 +5,7 @@
 #include <queue>
 #include <vector>
 #include <map>
+#include <unordered_map>
 #include <algorithm>
 
 #include "sim_defs.h"
@@ -43,8 +44,8 @@ typedef struct kernel_info_s {
 typedef struct warp_s {
   gzFile m_trace_file;
 
-  // Trace buffer for reading trace file
-  const unsigned trace_buffer_size = 32;                  // number of instruction the buffer can hold
+  // Trace buffer for reading trace file (larger buffer reduces gzread syscall frequency)
+  const unsigned trace_buffer_size = 1024;                // number of instruction the buffer can hold
   std::queue <trace_info_nvbit_small_s *> trace_buffer;   // Trace buffer
 
   // TODO: We need to have a per-warp timestamp marker
@@ -58,13 +59,13 @@ typedef struct warp_s {
   bool m_file_opened;
   bool m_trace_ended;
   // int file_pointer_offset = 0;
-  int warp_id;
+  uint64_t warp_id;
   int block_id; // this one is different from unique_block_id. for every kernel, the id starts from 0
 } warp_s;
 
 typedef struct warp_trace_info_node_s {
   warp_s* trace_info_ptr; /**< trace information pointer */
-  int warp_id; /**< warp id */
+  uint64_t warp_id; /**< warp id */
   int unique_block_id; /**< block id */
 } warp_trace_info_node_s;
 
@@ -107,7 +108,7 @@ struct GPU_scoreboard_entry {
   sim_time_type req_time = 0;
   bool is_mem;
   int core_id;
-  int warp_id;
+  uint64_t warp_id;
   uint64_t mem_queue_id = -1;
   bool insert_in_l1 = false;  // insert block in l1 also when response returns
   bool mark_dirty = false;    // mark as dirty in L2 when response returns
@@ -149,7 +150,7 @@ public:
   void trace_reader_setup();
 
   // Generates memory request for lower level memory model if there is a L2 miss
-  void inst_event(trace_info_nvbit_small_s* trace_info, int core_id, int block_id, int warp_id, sim_time_type c_cycle, bool on_response_insert_in_l1=false, bool on_response_mark_dirty=false);
+  void inst_event(trace_info_nvbit_small_s* trace_info, int core_id, int block_id, uint64_t warp_id, sim_time_type c_cycle, bool on_response_insert_in_l1=false, bool on_response_mark_dirty=false);
 
   // Get memory response from memory and
   void get_mem_response();
@@ -163,10 +164,10 @@ public:
   // End kernel
   void end_kernel();
 
-  void create_warp_node(int kernel_id, int warp_id);
+  void create_warp_node(int kernel_id, uint64_t warp_id);
   void insert_block(warp_trace_info_node_s *node);
   warp_trace_info_node_s* fetch_warp_from_block(int block_id);
-  int retire_block_helper(int core_id);
+  void on_warp_finished(int core_id, int block_id);
 
   /**
    * Dispatch warps to specified core
@@ -176,7 +177,7 @@ public:
   */
   int dispatch_warps(int core_id, Block_Scheduling_Policy_Types policy);
 
-  warp_s* initialize_warp(int warp_id);
+  warp_s* initialize_warp(uint64_t warp_id);
 
   // Block scheduler
   int schedule_blocks(int core_id, Block_Scheduling_Policy_Types policy);
@@ -213,6 +214,7 @@ public:
   cache_c* l2cache;
   pool_c<warp_trace_info_node_s> *trace_node_pool; /**<  trace node pool */
   pool_c<warp_s> *warp_pool;
+  pool_c<trace_info_nvbit_small_s> *trace_info_pool; /**< pool for per-instruction trace records (fixes new/no-delete leak) */
   vector<kernel_info_s> kernel_info_v;
   int m_kernel_block_start_count = 0;
   int m_num_active_warps = 0;
@@ -268,8 +270,8 @@ private:
   bool kernel_starting = true;
   bool kernel_ending = false;
 
-  // scoreboard to track GPU requests on the fly
-  vector<GPU_scoreboard_entry> GPU_scoreboard;
+  // scoreboard to track GPU requests on the fly (keyed by mem_queue_id for O(1) lookup)
+  unordered_map<uint64_t, GPU_scoreboard_entry> GPU_scoreboard;
   void read_trace(string trace_path, int truncate_size);
 
   int l2cache_size; 
