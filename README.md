@@ -196,9 +196,11 @@ For Task-4:
 - A comparison of the performance of round-robin vs GTO vs CCWS across the provided benchmarks.
 - A short discussion of how different warp scheduling strategies impact tensor core performance.
 
-### Task-6: Gradescope questions
+### Task-6: Gradescope Questions
 
 After investigating the statistics and trends from your analysis, go to Gradescope and complete the assignment "Project 3 - Report".
+
+The "Project 3 - Report" portion of the assignment is a multiple choice quiz. The questions in this quiz are based on learning outcomes and observations that can be seen from analyzing your implementation. As mentioned in the task 5 description the suggested written report outside is a useful guide to prepare you for this quiz.
 
 ## Grading
 The assignment is worth **20 points** and is divided into 4 components plus the gradescope questions.
@@ -215,7 +217,7 @@ The assignment is worth **20 points** and is divided into 4 components plus the 
 | 6 | 2 points | **On Gradescope** |
 
 ### Rubric for Tasks
-For the four tasks, the following scoring rubric will apply:
+For tasks 1 through 4, the following scoring rubric will apply:
 | Points Awarded | Criteria |
 | ---- | -------------- | 
 | +50% of task points | Submitted code that compiles and runs without any errors/warnings but does **NOT** match the stats within the acceptable tolerance.|
