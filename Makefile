@@ -110,7 +110,6 @@ submit: clean                               #t# Generate submission tarball
 	--exclude=.vscode \
 	--exclude=build \
 	--exclude=log \
-	--exclude=ref_log \
 	--exclude=*.zip \
 	--exclude=*.tar* \
 	--exclude=*.png \
@@ -118,6 +117,7 @@ submit: clean                               #t# Generate submission tarball
 	--exclude=macsim_traces \
 	-czhvf $(OUTPUT_TAR) *
 	
+# --exclude=ref_log \	
 
 .PHONY: clean
 clean:                                      #t# Clean build files
