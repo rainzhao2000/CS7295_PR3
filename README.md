@@ -111,7 +111,7 @@ schedule a warp for execution using GTO your code must do the following things:
 1. Check if the last scheduled warp is still in the active warps pool, if yes, schedule it again.
 2. If not, search through all the warps in the active warps pool and schedule the oldest one.
 
-> Hint: You must implement a per-warp timestamp marker and update it when the warp gets dispatched to the core.
+> Hint: You must implement a per-warp timestamp marker and update it when a block is scheduled and the block's warps are dispatched to a core (see the task in macsim class).
 
 > Hint: look for "// TODO: Task 3" comments!
 
