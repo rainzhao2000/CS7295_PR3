@@ -127,7 +127,7 @@ void core_c::run_a_cycle(){
   // Move currently executing warp to back of dispatch queue
   if (c_running_warp != NULL) {
     c_dispatched_warps.push_back(c_running_warp);
-    c_running_warp = NULL;
+    //c_running_warp = NULL;
   }
 
   if (c_dispatched_warps.empty()) {
@@ -288,8 +288,13 @@ bool core_c::add_insts_to_exec_buffer(int completion_cycle, uint64_t warp_id, in
 
 void core_c::remove_insts_in_exec_buffer(int current_cycle) {
   // Implement logic
-  for (auto it = c_exec_buffer.begin(); it != c_exec_buffer.end(); it++) {
-    if (it->timestamp <= current_cycle) c_exec_buffer.erase(it);
+  for (auto it = c_exec_buffer.begin(); it != c_exec_buffer.end();) {
+    if (it->timestamp <= current_cycle) {
+      auto del_it = it;
+      it = c_exec_buffer.erase(del_it);
+      continue;
+    }
+    it++;
   }
 }
 
@@ -359,9 +364,25 @@ bool core_c::schedule_warps_gto() {
   /*
     GTO logic goes here
   */
-
-  printf("ERROR: GTO Not Implemented\n");   // TODO: remove this
-  c_retire = true;                          // TODO: remove this
+  if (!c_dispatched_warps.empty()) {
+    if (c_running_warp == c_dispatched_warps.back()) {
+      // Greedy: Schedule the same warp again
+      if (!check_dependency(c_running_warp)) {
+        c_dispatched_warps.pop_back();
+        return false; // don't skip cycle
+      }
+    }
+    sim_time_type oldest_timestamp = (*(c_dispatched_warps.begin()))->dispatch_timestamp;
+    auto oldest_warp = c_dispatched_warps.begin();
+    for (auto warp_it = c_dispatched_warps.begin(); warp_it != c_dispatched_warps.end(); warp_it++) {
+      if ((*warp_it)->dispatch_timestamp < oldest_timestamp && !check_dependency(*warp_it)) {
+        oldest_warp = warp_it;
+      }
+    }
+    c_running_warp = *oldest_warp;
+    c_dispatched_warps.erase(oldest_warp);
+    return false; // don't skip cycle
+  }
   return true;
 }
 

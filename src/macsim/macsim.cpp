@@ -582,6 +582,7 @@ int macsim::dispatch_warps(int core_id, Block_Scheduling_Policy_Types policy){
       // TODO: Task 3: Initialize the warp's dispatch timestamp for GTO scheduling
       // Hint: Use m_cycle to set the timestamp when the warp is first dispatched
       //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      warp_to_run->trace_info_ptr->dispatch_timestamp = m_cycle;
 
       // We need to initialize VTA entry for the warp (associativity for VTA is defined in macsim.h)
       warp_to_run->trace_info_ptr->ccws_vta_entry = new ccws_vta(CCWS_VTA_ASSOC);

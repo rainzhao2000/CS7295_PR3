@@ -61,6 +61,7 @@ typedef struct warp_s {
   // int file_pointer_offset = 0;
   uint64_t warp_id;
   int block_id; // this one is different from unique_block_id. for every kernel, the id starts from 0
+  sim_time_type dispatch_timestamp; /**< timestamp when the warp is dispatched to a core */
 } warp_s;
 
 typedef struct warp_trace_info_node_s {
