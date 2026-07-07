@@ -363,12 +363,23 @@ void macsim::get_mem_response() {
           //    the tag in warp's VTA entry
           if(victim_line_addr) {
             // Get the tag from the address
-            Addr repl_ln_tag; 
+            Addr repl_ln_tag;
+            core_pointers_v[entry->core_id]->c_l1cache->find_tag_and_set(victim_line_addr, &repl_ln_tag, nullptr);
 
             // Get the warp pointer from suspended queue of core (use core_id from entry->core_id)
+            auto warp_it = core_pointers_v[entry->core_id]->c_suspended_warps.find(entry->warp_id);
 
             // Insert the tag into the warp's VTA
             CCWSLOG(printf("VTA insertion: %llx\n", repl_ln_tag));
+            if (warp_it != core_pointers_v[entry->core_id]->c_suspended_warps.end()) {
+              warp_s* warp_node = warp_it->second;
+              // Insert the tag into the warp's VTA
+              warp_node->ccws_vta_entry->insert(repl_ln_tag);
+            } else {
+              // If the warp is not found in suspended queue, it might have already been retired.
+              // In that case, we can log a message or handle it as needed.
+              CCWSLOG(printf("Warp %llu not found in suspended queue of core %d\n", entry->warp_id, entry->core_id));
+            }
 
           }
           //////////////////////////////////////////////////////////////////////////////////////////////////////////////
