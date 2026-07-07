@@ -244,7 +244,7 @@ void core_c::run_a_cycle(){
   //   - Non-tensor compute (ALU): always added to exec_buffer for dependency tracking
   //     only (ALU units are abundant on real GPUs, not capacity-bound).
 
-  if(/*compute ?*/) {
+  if(is_compute(trace_info->m_opcode)) {
 
     // Check whether this is a tensor op (opcodes starting with 'H', e.g., HMMA)
     std::string opcode_str = GPU_NVBIT_OPCODE[trace_info->m_opcode];
@@ -252,13 +252,14 @@ void core_c::run_a_cycle(){
 
     if (is_tensor_op) {
       // TODO: add to exec_buffer with width-limit check
-      if(/*buffer full ?*/) {
+      if(add_insts_to_exec_buffer(c_cycle + gpusim->m_tensor_latency, c_running_warp->warp_id, trace_info->m_dst[0])) {
         stall_cycles++;
         return;
       }
       tensor_instr_cnt++;
     } else {
       // TODO: unconditionally add to exec_buffer for dependency tracking
+      add_insts_to_exec_buffer(c_cycle + 1, c_running_warp->warp_id, trace_info->m_dst[0]);
     }
   }
 
@@ -278,6 +279,8 @@ void core_c::run_a_cycle(){
 
 bool core_c::add_insts_to_exec_buffer(int completion_cycle, uint64_t warp_id, int dest_reg) {
   // Implement logic
+  c_exec_buffer.emplace_back(ExecutionData{ warp_id, dest_reg, completion_cycle });
+  if (c_exec_buffer.size() > gpusim->m_execution_width) return true;
   return false;
 }
 
@@ -285,6 +288,9 @@ bool core_c::add_insts_to_exec_buffer(int completion_cycle, uint64_t warp_id, in
 
 void core_c::remove_insts_in_exec_buffer(int current_cycle) {
   // Implement logic
+  for (auto it = c_exec_buffer.begin(); it != c_exec_buffer.end(); it++) {
+    if (it->timestamp <= current_cycle) c_exec_buffer.erase(it);
+  }
 }
 
 bool core_c::schedule_warps(Warp_Scheduling_Policy_Types policy) {
@@ -313,10 +319,13 @@ bool core_c::schedule_warps_rr() {
     // IF check_dependency(warp) is false:
     //    Schedule it
     //    Return false (don't skip cycle)
-
-    c_running_warp = c_dispatched_warps.front();
-    c_dispatched_warps.erase(c_dispatched_warps.begin());
-    return false;
+    for (auto warp_it = c_dispatched_warps.begin(); warp_it != c_dispatched_warps.end(); warp_it++) {
+      if (!check_dependency(*warp_it)) {
+        c_running_warp = *warp_it;
+        c_dispatched_warps.erase(warp_it);
+        return false;
+      }
+    }
   }
   return true;
 }
@@ -327,6 +336,17 @@ bool core_c::schedule_warps_rr() {
 // Note: Only check dependencies for the SAME warp ID.
 bool core_c::check_dependency(warp_s* warp) {
     // Implement logic
+    if (warp->trace_buffer.empty()) return false;
+    std::unordered_set<int> read_regs;
+    trace_info_nvbit_small_s *trace_info = warp->trace_buffer.front();
+    for (uint8_t reg = 0; reg < trace_info->m_num_read_regs; reg++) {
+      read_regs.emplace(trace_info->m_src[reg]);
+    }
+    for (auto &inst : c_exec_buffer) {
+      if (inst.warp_id == warp->warp_id && read_regs.find(inst.dest_reg) != read_regs.end()) {
+        return true;
+      }
+    }
     return false;
 }
 

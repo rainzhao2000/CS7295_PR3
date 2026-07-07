@@ -443,7 +443,8 @@ inline bool is_using_shared_memory(uint8_t opcode){
 
 // TODO: Task 1 : check if the opcode belongs to compute list
 inline bool is_compute(uint8_t opcode){
-  return false;
+  auto it = find(begin(COMPUTE_LIST), end(COMPUTE_LIST), GPU_NVBIT_OPCODE[opcode]);
+  return (it != end(COMPUTE_LIST));
 }
 
 
@@ -452,6 +453,8 @@ inline int get_latency(uint8_t opcode, int tensor_latency){
   // Logic: Check if opcode is a Tensor opcode (starts with "H" in NVBit, though here you have uint8_t opcode enum).
   // If it is Tensor -> return tensor_latency
   // Else -> return 1
+  std::string opcode_str = GPU_NVBIT_OPCODE[opcode];
+  if (opcode_str.length() > 0 && opcode_str[0] == 'H') return tensor_latency;
   return 1;
 }
 

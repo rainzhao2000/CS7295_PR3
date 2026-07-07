@@ -82,6 +82,8 @@ macsim::macsim(GPU_Parameter_Set* gpu_params){
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // TODO: Task 1 & 2: Set m_tensor_latency and m_execution_width based on GPU parameters
   //////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  m_tensor_latency = gpu_params->Tensor_Latency;
+  m_execution_width = gpu_params->Execution_Width;
 
   m_cycle_per_period = m_gpu_params->Cycle_Per_Period;
   kernel_config_path = m_gpu_params->GPU_Trace_Path;
