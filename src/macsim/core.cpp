@@ -482,7 +482,8 @@ bool core_c::send_mem_req(uint64_t wid, trace_info_nvbit_small_s* trace_info, bo
 
       // Get tag from address (see if there is any method in cache class to help with this)
       Addr vta_ln_tag;
-      c_l1cache->find_tag_and_set(repl_line_addr, &vta_ln_tag, nullptr);
+      int set;
+      c_l1cache->find_tag_and_set(line_addr, &vta_ln_tag, &set);
 
       // Access the VTA using the tag
       CCWSLOG(printf("VTA Access: %0llx\n", vta_ln_tag);)
@@ -516,7 +517,8 @@ bool core_c::send_mem_req(uint64_t wid, trace_info_nvbit_small_s* trace_info, bo
         if(repl_line_addr) {
             // Get the tag from the address
             Addr repl_ln_tag;
-            c_l1cache->find_tag_and_set(repl_line_addr, &repl_ln_tag, nullptr);
+            int set;
+            c_l1cache->find_tag_and_set(repl_line_addr, &repl_ln_tag, &set);
             // Insert the tag into the warp's VTA
             CCWSLOG(printf("VTA insertion: %llx\n", repl_ln_tag));
             c_running_warp->ccws_vta_entry->insert(repl_ln_tag);

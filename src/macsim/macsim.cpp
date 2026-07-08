@@ -364,7 +364,8 @@ void macsim::get_mem_response() {
           if(victim_line_addr) {
             // Get the tag from the address
             Addr repl_ln_tag;
-            core_pointers_v[entry->core_id]->c_l1cache->find_tag_and_set(victim_line_addr, &repl_ln_tag, nullptr);
+            int set;
+            core_pointers_v[entry->core_id]->c_l1cache->find_tag_and_set(victim_line_addr, &repl_ln_tag, &set);
 
             // Get the warp pointer from suspended queue of core (use core_id from entry->core_id)
             auto warp_it = core_pointers_v[entry->core_id]->c_suspended_warps.find(entry->warp_id);
